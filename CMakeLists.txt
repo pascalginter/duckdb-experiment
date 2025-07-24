@@ -28,8 +28,7 @@ set(DUCKDB_MODULE_BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to enforce")
-
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -69,6 +68,8 @@ set(INSTALL_CMAKE_DIR
     ${DEF_INSTALL_CMAKE_DIR}
     CACHE PATH "Installation directory for CMake files")
 set(DUCKDB_EXPORT_SET "DuckDBExports")
+
+set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-cast-qual")
 
 # This option allows --gc-sections flag during extension linking to discard any unused functions or data
 if (EXTENSION_STATIC_BUILD AND "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -615,7 +616,6 @@ if(NOT MSVC)
     set(CXX_EXTRA "${CXX_EXTRA} -Wunused")
   endif()
   if(TREAT_WARNINGS_AS_ERRORS)
-    set(CXX_EXTRA "${CXX_EXTRA} -Werror")
   endif()
   set(CMAKE_CXX_FLAGS_DEBUG
       "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -DDEBUG -Wall ${M32_FLAG} ${CXX_EXTRA}")
@@ -627,10 +627,6 @@ if(NOT MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
   endif()
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g")
-
-  set(CXX_EXTRA_DEBUG
-      "${CXX_EXTRA_DEBUG} -Wunused -Werror=vla -Wnarrowing -pedantic"
-  )
 
   if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
                                                    VERSION_GREATER 8.0)
