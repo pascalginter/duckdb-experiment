@@ -302,9 +302,11 @@ void RadixHTBoundedPartitioning::PassThrough(BoundedPartitionNode &node, TupleDa
 	// combined when it is finalized
 	if (node.ht) {
 		Spill(node);
-		KeepAllocator(*node.ht);
-		node.ht.reset();
-		Account(node);
+		if (node.ht) {
+			KeepAllocator(*node.ht);
+			node.ht.reset();
+			Account(node);
+		}
 	}
 	node.pass_through = true;
 	if (!node.spilled) {
@@ -411,7 +413,6 @@ bool RadixHTBoundedPartitioning::Route(BoundedPartitionNode &node) {
 	unique_ptr<TupleDataCollection> data;
 	if (node.ht) {
 		data = node.ht->AcquirePartitionedData()->GetUnpartitioned();
-		node.ht->Abandon();
 		KeepAllocator(*node.ht);
 		node.ht.reset();
 		Account(node);
@@ -442,9 +443,10 @@ void RadixHTBoundedPartitioning::Spill(BoundedPartitionNode &node) {
 	// When most absorbed rows were new groups, the HT did not reduce the data enough to be worth spilling again
 	node.pass_through =
 	    static_cast<double>(node.ht->Count()) > PASS_THROUGH_THRESHOLD * static_cast<double>(node.absorbed_count);
+	// The HT is discarded rather than cleared, a fresh one is created when rows arrive again
 	auto data = node.ht->AcquirePartitionedData()->GetUnpartitioned();
-	node.ht->Abandon();
-	node.ht->Resize(GroupedAggregateHashTable::InitialCapacity());
+	KeepAllocator(*node.ht);
+	node.ht.reset();
 	if (node.spilled) {
 		node.spilled->Combine(*data);
 	} else {
@@ -484,7 +486,8 @@ bool RadixHTBoundedPartitioning::OverBudget() {
 		// Ask for more memory before evicting
 		const annotated_lock_guard<annotated_mutex> guard {gstate.lock};
 		auto &temporary_memory_state = *gstate.temporary_memory_state;
-		const auto request = 2 * pinned + gstate.minimum_reservation;
+		// The leaf HTs get a fraction of the reservation, ask for room to double them
+		const auto request = BUDGET_DIVISOR * 2 * pinned + gstate.minimum_reservation;
 		if (temporary_memory_state.GetRemainingSize() < request) {
 			temporary_memory_state.SetRemainingSizeAndUpdateReservation(context.GetContext(), request);
 		}
@@ -596,7 +599,6 @@ RadixHTBoundedPartitioning::FinalizeLeaf(idx_t leaf_idx, vector<shared_ptr<Arena
 	D_ASSERT(!node.IsRouter());
 	const auto take_ht_data = [&](GroupedAggregateHashTable &ht) {
 		auto data = ht.AcquirePartitionedData()->GetUnpartitioned();
-		ht.Abandon();
 		auto allocator = ht.GetAggregateAllocator();
 		if (allocator->AllocationSize() != 0) {
 			allocators_out.push_back(std::move(allocator));
@@ -666,7 +668,6 @@ void RadixHTBoundedPartitioning::GetLeaves(vector<BoundedPartitionLeafData> &lea
 		node.pending.clear();
 		if (node.ht) {
 			auto data = node.ht->AcquirePartitionedData()->GetUnpartitioned();
-			node.ht->Abandon();
 			auto allocator = node.ht->GetAggregateAllocator();
 			if (allocator->AllocationSize() != 0) {
 				allocators_out.push_back(std::move(allocator));

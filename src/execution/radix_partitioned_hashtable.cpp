@@ -925,8 +925,7 @@ static bool FinalizeBoundedPartitions(ClientContext &context, RadixHTGlobalSinkS
 		return false;
 	}
 
-	// Every leaf becomes a partition: leaves that hold their groups exactly once can be scanned right away,
-	// the others are finalized in parallel by the source phase
+	// Every leaf becomes a partition, which the source phase finalizes in parallel
 	auto &bounded = *gstate.bounded;
 	gstate.count_before_combining = 0;
 	gstate.size_before_combining = 0;
@@ -941,23 +940,9 @@ static bool FinalizeBoundedPartitions(ClientContext &context, RadixHTGlobalSinkS
 		}
 		gstate.count_before_combining += count;
 		gstate.size_before_combining += size;
-		if (combined) {
-			vector<shared_ptr<ArenaAllocator>> leaf_allocators;
-			auto leaf_data = bounded.FinalizeLeaf(leaf_idx, leaf_allocators);
-			gstate.partitions.emplace_back(make_uniq<AggregatePartition>(std::move(leaf_data)));
-			for (auto &allocator : leaf_allocators) {
-				gstate.stored_allocators_size += allocator->AllocationSize();
-				gstate.stored_allocators.emplace_back(std::move(allocator));
-			}
-			auto &partition = *gstate.partitions.back();
-			partition.finalized = true;
-			partition.state = AggregatePartitionState::READY_TO_SCAN;
-			gstate.finalize_done++;
-			gstate.max_partition_size = MaxValue(gstate.max_partition_size, size);
-			continue;
-		}
-		const auto partition_size = size + GroupedAggregateHashTable::GetCapacityForCount(count) * sizeof(ht_entry_t);
-		gstate.max_partition_size = MaxValue(gstate.max_partition_size, partition_size);
+		// A leaf that holds its groups exactly once needs no HT to be finalized
+		const auto ht_size = combined ? 0 : GroupedAggregateHashTable::GetCapacityForCount(count) * sizeof(ht_entry_t);
+		gstate.max_partition_size = MaxValue(gstate.max_partition_size, size + ht_size);
 		auto empty_data =
 		    make_uniq<TupleDataCollection>(BufferManager::GetBufferManager(context), gstate.radix_ht.GetLayoutPtr(),
 		                                   MemoryTag::HASH_TABLE, nullptr, context);
