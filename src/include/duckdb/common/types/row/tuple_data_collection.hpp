@@ -89,6 +89,10 @@ public:
 	idx_t ChunkCount() const;
 	//! The size (in bytes) of the blocks held by this tuple data collection
 	idx_t SizeInBytes() const;
+	//! The size (in bytes) of the rows and their heap, without the allocator metadata
+	idx_t DataSizeInBytes() const {
+		return data_size;
+	}
 	//! Logical row and heap bytes in a chunk, without pinning its blocks
 	idx_t GetChunkDataSize(idx_t chunk_idx) const;
 	//! Maximum average row bytes estimated from chunk parts, without pinning blocks

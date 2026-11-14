@@ -466,6 +466,35 @@ unique_ptr<TupleDataCollection> PartitionedTupleData::GetUnpartitioned() {
 	return data_collection;
 }
 
+const TupleDataCollection &PartitionedTupleData::GetPartition(idx_t partition_idx) const {
+	D_ASSERT(partition_idx < partitions.size());
+	return *partitions[partition_idx];
+}
+
+unique_ptr<TupleDataCollection> PartitionedTupleData::AcquirePartition(idx_t partition_idx) {
+	D_ASSERT(partition_idx < partitions.size());
+	auto &partition = partitions[partition_idx];
+	count -= partition->Count();
+	data_size -= partition->data_size;
+	auto result = std::move(partition);
+	partition = CreatePartitionCollection();
+	partition->SetPartitionIndex(partition_idx);
+	// Existing append states expect the partition to have a segment
+	TupleDataPinState pin_state;
+	partition->InitializeAppend(pin_state);
+	Verify();
+	return result;
+}
+
+void PartitionedTupleData::SeparatePartitionAllocators() {
+	D_ASSERT(Count() == 0);
+	separate_allocators = true;
+	for (idx_t partition_idx = 0; partition_idx < partitions.size(); partition_idx++) {
+		partitions[partition_idx] = CreatePartitionCollection();
+		partitions[partition_idx]->SetPartitionIndex(partition_idx);
+	}
+}
+
 idx_t PartitionedTupleData::Count() const {
 	return count;
 }

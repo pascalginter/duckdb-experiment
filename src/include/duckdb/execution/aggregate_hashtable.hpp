@@ -149,6 +149,10 @@ public:
 	//! Retained tuple blocks, allocator metadata, aggregate arena, and pointer table
 	idx_t GetSizeInBytes() const;
 	unique_ptr<PartitionedTupleData> AcquirePartitionedData();
+	//! Move one partition of the materialized groups out of an abandoned HT (requires the unpartitioned data)
+	unique_ptr<TupleDataCollection> AcquirePartition(idx_t partition_idx);
+	//! Give every partition an allocator of its own, so that acquired partitions can be used by other threads
+	void SeparatePartitionAllocators();
 	void Abandon();
 	void Repartition();
 	shared_ptr<ArenaAllocator> GetAggregateAllocator();
@@ -217,6 +221,8 @@ private:
 	static constexpr idx_t UNPARTITIONED_RADIX_BITS_THRESHOLD = 3;
 	//! The number of radix bits to partition by
 	idx_t radix_bits;
+	//! Whether the partitions of the data have allocators of their own
+	bool separate_partition_allocators = false;
 	//! The data of the HT
 	unique_ptr<PartitionedTupleData> partitioned_data;
 	unique_ptr<PartitionedTupleData> unpartitioned_data;

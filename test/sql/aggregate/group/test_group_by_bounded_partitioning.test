@@ -1,0 +1,100 @@
+# name: test/sql/aggregate/group/test_group_by_bounded_partitioning.test
+# description: Hash aggregation with bounded partitioning gives the same results as without
+# group: [group]
+
+statement ok
+SET threads=8
+
+statement ok
+SET preserve_insertion_order=false
+
+statement ok
+CREATE TABLE input AS
+SELECT i,
+       i % 7 AS tiny,
+       i % 1000 AS small,
+       hash(i) % 150000 AS medium,
+       CASE WHEN i % 13 = 0 THEN NULL ELSE (i % 50000)::VARCHAR || '_a_somewhat_longer_group_key' END AS str,
+       i % 2 = 0 AS b
+FROM range(1000000) t(i)
+
+foreach groups tiny small medium i str tiny,str b,medium
+
+statement ok
+SET enable_bounded_partitioning=false
+
+statement ok
+CREATE OR REPLACE TABLE expected AS
+SELECT ${groups}, count(*) c, sum(i) s, min(i) mi, max(i) ma, avg(i) a, max(str) ms, median(i) med
+FROM input GROUP BY ${groups}
+
+statement ok
+SET enable_bounded_partitioning=true
+
+statement ok
+CREATE OR REPLACE TABLE actual AS
+SELECT ${groups}, count(*) c, sum(i) s, min(i) mi, max(i) ma, avg(i) a, max(str) ms, median(i) med
+FROM input GROUP BY ${groups}
+
+query I
+SELECT count(*) FROM (
+    (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT ALL SELECT * FROM expected)
+)
+----
+0
+
+query I
+SELECT count(*) = (SELECT count(*) FROM expected) FROM actual
+----
+true
+
+endloop
+
+statement ok
+SET enable_bounded_partitioning=true
+
+query III
+SELECT count(*), sum(c), sum(s) FROM (SELECT i % 100000 k, count(*) c, sum(i) s FROM range(2000000) t(i) GROUP BY k)
+----
+100000	2000000	1999999000000
+
+query II
+SELECT count(*), sum(c) FROM (SELECT i k, count(*) c FROM range(3000000) t(i) GROUP BY k)
+----
+3000000	3000000
+
+# grouping sets
+query II
+SELECT count(*), sum(c) FROM (
+    SELECT tiny, medium, count(*) c FROM input GROUP BY GROUPING SETS ((tiny), (medium), (tiny, medium), ())
+)
+----
+795048	4000000
+
+# arena-backed states use the regular path
+query II
+SELECT count(*), sum(length(s)) FROM (SELECT small, string_agg(tiny::VARCHAR, ',') s FROM input GROUP BY small)
+----
+1000	1999000
+
+# distinct aggregates
+query II
+SELECT count(*), sum(d) FROM (SELECT medium, count(DISTINCT tiny) d FROM input GROUP BY medium)
+----
+149792	645248
+
+# empty input
+query II
+SELECT small, count(*) FROM input WHERE i < 0 GROUP BY small
+----
+
+# few threads grow a single HT and do not use bounded partitioning
+statement ok
+SET threads=2
+
+query II
+SELECT count(*), sum(c) FROM (SELECT medium, count(*) c FROM input GROUP BY medium)
+----
+149792	1000000

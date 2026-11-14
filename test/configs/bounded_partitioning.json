@@ -1,0 +1,5 @@
+{
+  "description": "Run with bounded partitioning for hash aggregates.",
+  "on_init": "SET enable_bounded_partitioning=true;",
+  "skip_compiled": "true"
+}

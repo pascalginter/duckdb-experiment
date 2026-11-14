@@ -1,0 +1,69 @@
+# name: test/sql/aggregate/group/test_group_by_bounded_partitioning_external.test_slow
+# description: Hash aggregation with bounded partitioning that does not fit in memory
+# group: [group]
+
+statement ok
+PRAGMA temp_directory='{TEST_DIR}/bounded_partitioning_external'
+
+statement ok
+SET enable_bounded_partitioning=true
+
+statement ok
+SET threads=8
+
+statement ok
+SET memory_limit='300MB'
+
+statement ok
+SET preserve_insertion_order=false
+
+# all groups are unique
+query III
+SELECT count(*), sum(c), sum(k) FROM (SELECT i k, count(*) c FROM range(30000000) t(i) GROUP BY k)
+----
+30000000	30000000	449999985000000
+
+# every group occurs twice, far apart
+query III
+SELECT count(*), sum(c), sum(s) FROM (SELECT i % 15000000 k, count(*) c, sum(i) s FROM range(30000000) t(i) GROUP BY k)
+----
+15000000	30000000	449999985000000
+
+# string groups
+query III
+SELECT count(*), sum(c), sum(length(k)) FROM (
+    SELECT (i % 5000000)::VARCHAR || '_a_somewhat_longer_group_key' k, count(*) c FROM range(20000000) t(i) GROUP BY k
+)
+----
+5000000	20000000	173888890
+
+# aggregate states with destructors
+query II
+SELECT count(*), sum(m) FROM (SELECT i % 1000000 k, median(i) m FROM range(2000000) t(i) GROUP BY k)
+----
+1000000	999999500000.0
+
+statement ok
+SET threads=32
+
+query III
+SELECT count(*), sum(c), sum(k) FROM (SELECT hash(i) % 20000000 k, count(*) c FROM range(40000000) t(i) GROUP BY k)
+----
+17294423	40000000	172934317854310
+
+statement ok
+SET enable_bounded_partitioning=false
+
+statement ok
+CREATE TABLE expected AS SELECT hash(i) % 20000000 k, count(*) c FROM range(40000000) t(i) GROUP BY k
+
+statement ok
+SET enable_bounded_partitioning=true
+
+statement ok
+CREATE TABLE actual AS SELECT hash(i) % 20000000 k, count(*) c FROM range(40000000) t(i) GROUP BY k
+
+query I
+SELECT (SELECT (count(*), sum(hash(k, c))) FROM expected) = (SELECT (count(*), sum(hash(k, c))) FROM actual)
+----
+true

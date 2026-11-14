@@ -1419,6 +1419,19 @@ struct EnableBlockAllocatorSetting {
 	static Value GetSetting(const ClientContext &context);
 };
 
+struct EnableBoundedPartitioningSetting {
+	using RETURN_TYPE = bool;
+	static constexpr const char *Name = "enable_bounded_partitioning";
+	static constexpr const char *Description =
+	    "Aggregate the partitions of hash aggregates into bounded shared hash tables while sinking.";
+	static constexpr const char *InputType = "BOOLEAN";
+	static constexpr bool IsDebug = false;
+	static constexpr bool IsDeprecated = false;
+	static constexpr const char *DefaultValue = "false";
+	static constexpr SettingScopeTarget Scope = SettingScopeTarget::LOCAL_DEFAULT;
+	static constexpr idx_t SettingIndex = NEXT_SETTING_INDEX();
+};
+
 struct EnableExternalAccessSetting {
 	using RETURN_TYPE = bool;
 	static constexpr const char *Name = "enable_external_access";

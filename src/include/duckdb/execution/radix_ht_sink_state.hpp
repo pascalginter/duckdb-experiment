@@ -11,6 +11,7 @@
 #include "duckdb/execution/radix_partitioned_hashtable.hpp"
 #include "duckdb/execution/aggregate_hashtable.hpp"
 #include "duckdb/execution/aggregate_state_spilling.hpp"
+#include "duckdb/execution/radix_ht_bounded.hpp"
 #include "duckdb/storage/temporary_memory_manager.hpp"
 
 namespace duckdb {
@@ -34,6 +35,10 @@ public:
 	void ResetForNewIteration(idx_t scheduled_workers);
 	void SetRadixBits(const idx_t &radix_bits_p);
 	bool SetRadixBitsToExternal();
+	//! The maximum radix bits that the memory allows, regardless of the row width
+	idx_t BoundedRadixBits() const;
+	//! Set the radix bits to the bounded radix bits
+	void SetRadixBitsToBounded();
 	idx_t GetRadixBits() const;
 	idx_t GetMaximumSinkRadixBits() const;
 
@@ -106,7 +111,12 @@ public:
 
 public:
 	idx_t GetThreadLimit() const {
-		return temporary_memory_state->GetReservation() / number_of_threads / 10 * 8;
+		auto reservation = temporary_memory_state->GetReservation();
+		if (bounded) {
+			// The HTs of the bounded partitioning take their share of the reservation
+			reservation -= MinValue(bounded->GetPinnedSize(), reservation / RadixHTBoundedPartitioning::BUDGET_DIVISOR);
+		}
+		return reservation / number_of_threads / 10 * 8;
 	}
 	//! Whether the aggregate arena alone approaches the thread memory limit
 	bool StatePressureExceeded(GroupedAggregateHashTable &ht) const;
@@ -153,6 +163,9 @@ public:
 	vector<shared_ptr<ArenaAllocator>> stored_allocators;
 	idx_t stored_allocators_size;
 
+	//! Bounded partitioning of the data that the threads hand over while sinking (if enabled)
+	unique_ptr<RadixHTBoundedPartitioning> bounded;
+
 	//! Partitions that are finalized during GetData
 	vector<unique_ptr<AggregatePartition>> partitions;
 	//! For keeping track of progress
@@ -182,6 +195,8 @@ public:
 
 	//! Whether this local state has already registered itself as active for the current iteration
 	bool registered;
+	//! Index of this thread among the threads that registered
+	idx_t thread_idx = 0;
 	//! Whether this local table has entered spilling or state export
 	bool spilling = false;
 	//! Sink capacity for this thread

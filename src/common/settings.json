@@ -792,6 +792,13 @@
         "custom_implementation": true
     },
     {
+        "name": "enable_bounded_partitioning",
+        "description": "Aggregate the partitions of hash aggregates into bounded shared hash tables while sinking.",
+        "type": "BOOLEAN",
+        "default_scope": "local",
+        "default_value": "false"
+    },
+    {
         "name": "enable_external_access",
         "description": "Allow the database to access external state, e.g. through loading/installing modules, COPY TO/FROM, CSV readers, pandas replacement scans, etc.",
         "type": "BOOLEAN",

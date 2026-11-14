@@ -134,6 +134,12 @@ public:
 	unsafe_vector<unique_ptr<TupleDataCollection>> &GetPartitions();
 	//! Get the data of this PartitionedTupleData as a single unpartitioned TupleDataCollection
 	unique_ptr<TupleDataCollection> GetUnpartitioned();
+	//! Get a single partition of this PartitionedTupleData
+	const TupleDataCollection &GetPartition(idx_t partition_idx) const;
+	//! Move a single partition out of this PartitionedTupleData, leaving an empty partition behind
+	unique_ptr<TupleDataCollection> AcquirePartition(idx_t partition_idx);
+	//! Give every partition an allocator of its own, so that partitions can be used by different threads at once
+	void SeparatePartitionAllocators();
 	//! Get the count of this PartitionedTupleData
 	idx_t Count() const;
 	//! Get the size (in bytes) of this PartitionedTupleData
@@ -201,7 +207,8 @@ protected:
 	void BuildBufferSpace(PartitionedTupleDataAppendState &state);
 	//! Create a collection for a specific a partition
 	unique_ptr<TupleDataCollection> CreatePartitionCollection() {
-		return make_uniq<TupleDataCollection>(buffer_manager, layout_ptr, tag, stl_allocator, context);
+		return make_uniq<TupleDataCollection>(buffer_manager, layout_ptr, tag,
+		                                      separate_allocators ? nullptr : stl_allocator, context);
 	}
 	//! Verify count/data size of this PartitionedTupleData
 	void Verify() const;
@@ -218,6 +225,8 @@ protected:
 	const TupleDataLayout &layout;
 
 	const MemoryTag tag;
+	//! Whether every partition has an allocator of its own
+	bool separate_allocators = false;
 
 	idx_t count;
 	idx_t data_size;

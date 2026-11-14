@@ -102,6 +102,9 @@ void GroupedAggregateHashTable::InitializePartitionedData() {
 		D_ASSERT(!partitioned_data || partitioned_data->Count() == 0);
 		partitioned_data = make_uniq<RadixPartitionedTupleData>(buffer_manager, layout_ptr, MemoryTag::HASH_TABLE,
 		                                                        radix_bits, layout_ptr->ColumnCount() - 1, context);
+		if (separate_partition_allocators) {
+			partitioned_data->SeparatePartitionAllocators();
+		}
 	} else {
 		partitioned_data->Reset();
 	}
@@ -161,6 +164,20 @@ unique_ptr<PartitionedTupleData> GroupedAggregateHashTable::AcquirePartitionedDa
 	auto result = std::move(partitioned_data);
 	InitializePartitionedData();
 	return result;
+}
+
+unique_ptr<TupleDataCollection> GroupedAggregateHashTable::AcquirePartition(idx_t partition_idx) {
+	// Only unpinned partitions without pointers into them can be moved out
+	D_ASSERT(radix_bits >= UNPARTITIONED_RADIX_BITS_THRESHOLD && Count() == 0);
+	tuple_size_cache.count.SetInvalid();
+	return partitioned_data->AcquirePartition(partition_idx);
+}
+
+void GroupedAggregateHashTable::SeparatePartitionAllocators() {
+	D_ASSERT(GetMaterializedCount() == 0);
+	separate_partition_allocators = true;
+	partitioned_data.reset();
+	InitializePartitionedData();
 }
 
 void GroupedAggregateHashTable::Abandon() {

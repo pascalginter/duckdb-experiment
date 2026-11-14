@@ -23,6 +23,7 @@ add_library_unity(
   physical_plan_generator.cpp
   row_id_deduplicator.cpp
   radix_ht_adaptivity.cpp
+  radix_ht_bounded.cpp
   radix_partitioned_hashtable.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_execution>
